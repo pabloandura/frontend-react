@@ -12,28 +12,38 @@ import {
   Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { useAuth } from '../context/AuthContext';
+import { notifications } from '@mantine/notifications';
+import client from '../api/client';
 
-export default function LoginPage() {
-  const { login } = useAuth();
+export default function RegisterPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
   const form = useForm({
-    initialValues: { email: '', password: '' },
+    initialValues: { name: '', email: '', password: '' },
     validate: {
+      name: (v) => (v.trim().length > 0 ? null : 'Name is required'),
       email: (v) => (/^\S+@\S+\.\S+$/.test(v) ? null : 'Enter a valid email'),
-      password: (v) => (v.length > 0 ? null : 'Password is required'),
+      password: (v) => (v.length >= 8 ? null : 'Password must be at least 8 characters'),
     },
   });
 
   async function handleSubmit(values: typeof form.values) {
     setLoading(true);
     try {
-      await login(values.email, values.password);
-      navigate('/products');
+      await client.post('/auth/register', values);
+      notifications.show({
+        color: 'green',
+        title: 'Account created',
+        message: 'You can now sign in.',
+      });
+      navigate('/login');
     } catch {
-      form.setErrors({ password: 'Invalid email or password' });
+      notifications.show({
+        color: 'red',
+        title: 'Registration failed',
+        message: 'That email may already be in use.',
+      });
     } finally {
       setLoading(false);
     }
@@ -44,11 +54,16 @@ export default function LoginPage() {
       <Paper w="100%" maw={400} p="xl" shadow="md" radius="md" withBorder>
         <Stack gap="lg">
           <Title order={2} ta="center">
-            Sign in
+            Create account
           </Title>
 
           <form onSubmit={form.onSubmit(handleSubmit)}>
             <Stack gap="sm">
+              <TextInput
+                label="Name"
+                placeholder="Your name"
+                {...form.getInputProps('name')}
+              />
               <TextInput
                 label="Email"
                 type="email"
@@ -57,19 +72,19 @@ export default function LoginPage() {
               />
               <PasswordInput
                 label="Password"
-                placeholder="Your password"
+                placeholder="At least 8 characters"
                 {...form.getInputProps('password')}
               />
               <Button type="submit" loading={loading} fullWidth mt="xs">
-                Sign in
+                Create account
               </Button>
             </Stack>
           </form>
 
           <Text ta="center" size="sm">
-            No account?{' '}
-            <Anchor component={Link} to="/register">
-              Create one
+            Already have an account?{' '}
+            <Anchor component={Link} to="/login">
+              Sign in
             </Anchor>
           </Text>
         </Stack>
