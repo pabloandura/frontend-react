@@ -1,7 +1,6 @@
 # ── Stage 1: development (Vite dev server with hot reload) ────────────────────
 FROM node:20-alpine AS development
 WORKDIR /app
-RUN corepack enable && corepack prepare yarn@stable --activate
 COPY package.json yarn.lock ./
 RUN yarn install --frozen-lockfile
 COPY . .
@@ -11,7 +10,6 @@ CMD ["yarn", "dev", "--host"]
 # ── Stage 2: build (compile static assets) ───────────────────────────────────
 FROM node:20-alpine AS builder
 WORKDIR /app
-RUN corepack enable && corepack prepare yarn@stable --activate
 COPY package.json yarn.lock ./
 RUN yarn install --frozen-lockfile
 COPY . .
