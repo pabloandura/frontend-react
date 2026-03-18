@@ -1,5 +1,24 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  Affix,
+  ActionIcon,
+  Button,
+  CopyButton,
+  Divider,
+  Group,
+  NumberInput,
+  Paper,
+  Select,
+  Stack,
+  Text,
+  TextInput,
+  Title,
+  Tooltip,
+} from '@mantine/core';
+import { useForm } from '@mantine/form';
+import { notifications } from '@mantine/notifications';
+import { IconCopy, IconCheck, IconTrash, IconPlus } from '@tabler/icons-react';
 import client from '../api/client';
 
 interface Product {
@@ -17,10 +36,7 @@ interface OrderItem {
 export default function CreateOrderPage() {
   const navigate = useNavigate();
   const [products, setProducts] = useState<Product[]>([]);
-  const [clientName, setClientName] = useState('');
-  const [items, setItems] = useState<OrderItem[]>([{ productId: '', quantity: 1 }]);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
   const [confirmedOrderId, setConfirmedOrderId] = useState('');
 
   useEffect(() => {
@@ -29,42 +45,44 @@ export default function CreateOrderPage() {
       .then(({ data }) => setProducts(data.data));
   }, []);
 
-  function addItem() {
-    setItems((prev) => [...prev, { productId: '', quantity: 1 }]);
-  }
+  const form = useForm<{ clientName: string; items: OrderItem[] }>({
+    initialValues: {
+      clientName: '',
+      items: [{ productId: '', quantity: 1 }],
+    },
+    validate: {
+      clientName: (v) => (v.trim().length > 0 ? null : 'Client name is required'),
+      items: {
+        productId: (v) => (v ? null : 'Select a product'),
+        quantity: (v) => (v >= 1 ? null : 'Quantity must be at least 1'),
+      },
+    },
+  });
 
-  function removeItem(index: number) {
-    setItems((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  function updateItem(index: number, field: keyof OrderItem, value: string | number) {
-    setItems((prev) =>
-      prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)),
-    );
-  }
+  const productOptions = products.map((p) => ({
+    value: p.id,
+    label: `${p.name} — $${p.price.toFixed(2)}`,
+  }));
 
   function runningTotal(): number {
-    return items.reduce((sum, item) => {
+    return form.values.items.reduce((sum, item) => {
       const product = products.find((p) => p.id === item.productId);
       if (!product || item.quantity < 1) return sum;
       return Math.round((sum + product.price * item.quantity) * 100) / 100;
     }, 0);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError('');
-
-    const validItems = items.filter((i) => i.productId && i.quantity > 0);
+  async function handleSubmit(values: typeof form.values) {
+    const validItems = values.items.filter((i) => i.productId && i.quantity > 0);
     if (!validItems.length) {
-      setError('Add at least one product with a valid quantity.');
+      notifications.show({ color: 'red', message: 'Add at least one product.' });
       return;
     }
 
     setSubmitting(true);
     try {
       const { data } = await client.post<{ data: { id: string } }>('/orders', {
-        clientName,
+        clientName: values.clientName,
         items: validItems.map((i) => ({ productId: i.productId, quantity: Number(i.quantity) })),
       });
       setConfirmedOrderId(data.data.id);
@@ -72,7 +90,7 @@ export default function CreateOrderPage() {
       const msg =
         (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
           ?.message ?? 'Failed to create order.';
-      setError(msg);
+      notifications.show({ color: 'red', title: 'Error', message: msg });
     } finally {
       setSubmitting(false);
     }
@@ -80,74 +98,133 @@ export default function CreateOrderPage() {
 
   if (confirmedOrderId) {
     return (
-      <main>
-        <h1>Order confirmed!</h1>
-        <p>Order ID: <strong>{confirmedOrderId}</strong></p>
-        <button onClick={() => navigate('/products')}>Back to Products</button>
-        {' '}
-        <button onClick={() => { setConfirmedOrderId(''); setItems([{ productId: '', quantity: 1 }]); setClientName(''); }}>
-          Create another
-        </button>
-      </main>
+      <Stack gap="md" maw={480} mx="auto">
+        <Title order={2}>Order confirmed!</Title>
+        <Paper p="lg" withBorder radius="md">
+          <Stack gap="md">
+            <Text>Your order has been placed successfully.</Text>
+            <Group>
+              <Text size="sm" c="dimmed">
+                Order ID:
+              </Text>
+              <Text ff="monospace" size="sm" style={{ wordBreak: 'break-all' }}>
+                {confirmedOrderId}
+              </Text>
+              <CopyButton value={confirmedOrderId}>
+                {({ copied, copy }) => (
+                  <Tooltip label={copied ? 'Copied!' : 'Copy ID'}>
+                    <ActionIcon variant="subtle" onClick={copy} color={copied ? 'teal' : 'gray'}>
+                      {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+                    </ActionIcon>
+                  </Tooltip>
+                )}
+              </CopyButton>
+            </Group>
+            <Group mt="xs">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setConfirmedOrderId('');
+                  form.reset();
+                }}
+              >
+                New order
+              </Button>
+              <Button onClick={() => navigate('/products')}>Go to products</Button>
+            </Group>
+          </Stack>
+        </Paper>
+      </Stack>
     );
   }
 
   return (
-    <main>
-      <h1>Create Order</h1>
-      <form onSubmit={handleSubmit}>
-        <label>
-          Client name
-          <input
-            type="text"
-            value={clientName}
-            onChange={(e) => setClientName(e.target.value)}
-            required
-            minLength={1}
+    <Stack gap="md" maw={560} mx="auto" pb={80}>
+      <Title order={2}>Create Order</Title>
+
+      <form onSubmit={form.onSubmit(handleSubmit)}>
+        <Stack gap="md">
+          <TextInput
+            label="Client name"
+            placeholder="e.g. Acme Corp"
+            data-autofocus
+            {...form.getInputProps('clientName')}
           />
-        </label>
 
-        <h2>Products</h2>
-        {items.map((item, index) => (
-          <div key={index} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-            <select
-              value={item.productId}
-              onChange={(e) => updateItem(index, 'productId', e.target.value)}
-              required
-            >
-              <option value="">— select product —</option>
-              {products.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.sku}) — ${p.price.toFixed(2)}
-                </option>
-              ))}
-            </select>
-            <input
-              type="number"
-              min={1}
-              value={item.quantity}
-              onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value, 10))}
-              style={{ width: '70px' }}
-              required
-            />
-            {items.length > 1 && (
-              <button type="button" onClick={() => removeItem(index)}>✕</button>
-            )}
-          </div>
-        ))}
+          <Divider label="Products" labelPosition="left" />
 
-        <button type="button" onClick={addItem}>+ Add product</button>
+          <Stack gap="sm">
+            {form.values.items.map((_, index) => (
+              <Paper key={index} p="sm" withBorder radius="md">
+                <Stack gap="xs">
+                  <Select
+                    label="Product"
+                    placeholder="Select a product"
+                    data={productOptions}
+                    searchable
+                    {...form.getInputProps(`items.${index}.productId`)}
+                  />
+                  <Group align="flex-end">
+                    <NumberInput
+                      label="Quantity"
+                      min={1}
+                      style={{ flex: 1 }}
+                      {...form.getInputProps(`items.${index}.quantity`)}
+                    />
+                    {form.values.items.length > 1 && (
+                      <ActionIcon
+                        color="red"
+                        variant="subtle"
+                        size="lg"
+                        mb={1}
+                        onClick={() => form.removeListItem('items', index)}
+                      >
+                        <IconTrash size={18} />
+                      </ActionIcon>
+                    )}
+                  </Group>
+                </Stack>
+              </Paper>
+            ))}
+          </Stack>
 
-        <p>
-          <strong>Running total: ${runningTotal().toFixed(2)}</strong>
-        </p>
+          <Button
+            variant="subtle"
+            leftSection={<IconPlus size={16} />}
+            onClick={() => form.insertListItem('items', { productId: '', quantity: 1 })}
+          >
+            Add product
+          </Button>
 
-        {error && <p role="alert" style={{ color: 'red' }}>{error}</p>}
-
-        <button type="submit" disabled={submitting}>
-          {submitting ? 'Placing order…' : 'Place order'}
-        </button>
+          <Button type="submit" loading={submitting}>
+            Place order
+          </Button>
+        </Stack>
       </form>
-    </main>
+
+      {/* Sticky running total — stays visible while scrolling on mobile */}
+      <Affix position={{ bottom: 0, left: 0, right: 0 }} hiddenFrom="sm">
+        <Paper p="md" shadow="md" radius={0}>
+          <Group justify="space-between">
+            <Text size="sm" c="dimmed">
+              Running total
+            </Text>
+            <Text fw={700} size="lg">
+              ${runningTotal().toFixed(2)}
+            </Text>
+          </Group>
+        </Paper>
+      </Affix>
+
+      {/* Desktop running total — inline */}
+      <Paper p="md" withBorder radius="md" visibleFrom="sm">
+        <Group justify="space-between">
+          <Text fw={500}>Running total</Text>
+          <Text fw={700} size="xl" c="violet">
+            ${runningTotal().toFixed(2)}
+          </Text>
+        </Group>
+      </Paper>
+    </Stack>
   );
 }
